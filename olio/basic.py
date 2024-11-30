@@ -6,11 +6,14 @@
 from __future__ import annotations
 
 # %% auto 0
-__all__ = ['AD', 'is_listy', 'is_listy_type', 'flatten', 'shorten']
+__all__ = ['AD', 'is_listy', 'is_listy_type', 'flatten', 'shorten', 'pops_', 'pops_values_', 'gets', 'update_']
 
 # %% ../nbs/00_basic.ipynb
 import pprint
+from inspect import Parameter
+from typing import Hashable
 from typing import Iterable
+from typing import Mapping
 from typing import Self
 from typing import TypeVar
 
@@ -66,4 +69,31 @@ def shorten(x, mode='l', limit=40, trunc='…', empty='') -> str:
         )
         s = f'{l}{m}{r}'
     return s
+
+
+# %% ../nbs/00_basic.ipynb
+def pops_(d: dict, *ks: Hashable) -> dict:
+    "Pop existing `ks` items from `d` in-place into a dictionary."
+    return {k:d.pop(k) for k in ks if k in d}
+
+
+# %% ../nbs/00_basic.ipynb
+def pops_values_(d: dict, *ks: Hashable) -> tuple:
+    "Pop existing `ks` items from `d` in-place into a tuple of values or `Parameter.empty` for missing keys."
+    return tuple(d.pop(k, Parameter.empty) for k in ks)
+
+
+# %% ../nbs/00_basic.ipynb
+def gets(d: Mapping, *ks: Hashable):
+    "Fetches `ks` values, or `Parameter.empty` for missing keys, from `d` into a tuple."
+    return tuple(d.get(k, Parameter.empty) for k in ks)  # type: ignore
+
+
+# %% ../nbs/00_basic.ipynb
+def update_(d:dict|None=None, /, empty_value=None, **kwargs):
+    "Update `d` in-place with `kwargs` whose values aren't `empty_value`"
+    d = d if d is not None else {}
+    for k, v in kwargs.items():
+        if v is not empty_value: d[k] = v
+    return d
 
