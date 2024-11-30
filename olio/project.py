@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 # %% auto 0
-__all__ = []
+__all__ = ['get_console', 'setup_console']
 
 # %% ../nbs/00_project.ipynb
 import pathlib
@@ -20,12 +20,6 @@ from rich.console import Console
 # _console = Console(width=107, tab_size= 4, theme=dark_theme, force_jupyter=True if FC.IN_NOTEBOOK else None)
 _CONSOLE: Console = None  # type: ignore
 
-# %% ../nbs/00_project.ipynb
-def get_console() -> Console:
-    "Globally configured console"
-    global _CONSOLE
-    return _CONSOLE
-
 def get_theme(theme:str | object | None):
     if isinstance(theme, str):
         try:
@@ -38,6 +32,13 @@ def get_theme(theme:str | object | None):
             theme = None
     # return theme or Theme('default', styles={"repr.tag_contents": "white"})
     return theme
+
+
+# %% ../nbs/00_project.ipynb
+def get_console() -> Console:
+    "Globally configured console"
+    global _CONSOLE
+    return _CONSOLE
 
 def setup_console(
         width: int = 140,
