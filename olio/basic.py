@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 # %% auto 0
-__all__ = ['AD', 'is_listy', 'is_listy_type', 'flatten', 'shorten', 'pops_', 'pops_values_', 'gets', 'update_']
+__all__ = ['EmptyT', 'AD', 'is_listy', 'is_listy_type', 'flatten', 'shorten', 'pops_', 'pops_values_', 'gets', 'update_']
 
 # %% ../nbs/00_basic.ipynb
 import pprint
@@ -15,9 +15,16 @@ from typing import Hashable
 from typing import Iterable
 from typing import Mapping
 from typing import Self
+from typing import Type
+from typing import TypeAlias
 from typing import TypeVar
 
 import fastcore.all as FC
+
+
+# %% ../nbs/00_basic.ipynb
+_EMPTY: TypeAlias = Parameter.empty
+EmptyT = Type[_EMPTY]
 
 
 # %% ../nbs/00_basic.ipynb

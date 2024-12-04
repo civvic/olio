@@ -6,13 +6,12 @@
 from __future__ import annotations
 
 # %% auto 0
-__all__ = ['EmptyT', 'NoTotalT', 'Callback', 'run_cbs', 'PassCB', 'HasCallbacks', 'with_cbs', 'CollectionTracker']
+__all__ = ['NoTotalT', 'Callback', 'run_cbs', 'PassCB', 'HasCallbacks', 'with_cbs', 'CollectionTracker']
 
 # %% ../nbs/10_callback.ipynb
 import time
 from contextlib import contextmanager
 from functools import partial
-from inspect import Parameter
 from operator import attrgetter
 from typing import Any
 from typing import Iterable
@@ -24,8 +23,8 @@ import fastcore.all as FC
 
 
 # %% ../nbs/10_callback.ipynb
+from .basic import _EMPTY
 from .basic import AD
-from .project import setup_console
 
 
 # %% ../nbs/10_callback.ipynb
@@ -98,8 +97,6 @@ class with_cbs:
         return _f
 
 # %% ../nbs/10_callback.ipynb
-_EMPTY: TypeAlias = Parameter.empty
-EmptyT = Type[_EMPTY]
 NoTotalT: TypeAlias = None
 
 # %% ../nbs/10_callback.ipynb
