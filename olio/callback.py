@@ -34,11 +34,11 @@ class Callback():
 
 
 # %% ../nbs/10_callback.ipynb
-def run_cbs(cbs: Sequence[Callback] | FC.L, method_nm:str, caller=None):
+def run_cbs(cbs: Sequence[Callback] | FC.L, method_nm:str, caller=None, *args, **kwargs):
     "Run `method_nm(caller)` of each callback in `cbs` in order."
     for cb in sorted(cbs, key=attrgetter('order')):
-        if method := getattr(cb, method_nm, None): method(caller)
-        if nested := getattr(cb, 'cbs', None): run_cbs(nested, method_nm, caller)
+        if method := getattr(cb, method_nm, None): method(caller, *args, **kwargs)
+        if nested := getattr(cb, 'cbs', None): run_cbs(nested, method_nm, caller, *args, **kwargs)
 
 
 # %% ../nbs/10_callback.ipynb
@@ -79,7 +79,7 @@ class HasCallbacks:
         if name in self.cbs_names: return partial(self.callback, name)
         raise AttributeError(name)
 
-    def callback(self, method_nm): run_cbs(self.cbs, method_nm, self)
+    def callback(self, method_nm, *args, **kwargs): run_cbs(self.cbs, method_nm, self, *args, **kwargs)
 
 
 # %% ../nbs/10_callback.ipynb
@@ -121,11 +121,11 @@ class CollectionTracker(HasCallbacks):
             return min(1.0, round((self.idx+1) / float(self.total), 4))
         return None
 
-    def update(self, idx:int|None=None):
+    def update(self, idx:int|None=None, item:Any=_EMPTY):
         if self.idx is None: self.idx = self._start(idx or 0)
         if not self.active or (self.total is not None and self.idx >= self.total): return
         self.elapsed_time = time.time() - self.start_time  # type: ignore
-        self.on_update()
+        self.on_update(item) if item is not _EMPTY else self.on_update()
         if idx is None: idx = self.idx + 1
         if self.total is not None and idx >= self.total:
             self.after_iter()
@@ -152,7 +152,7 @@ class CollectionTracker(HasCallbacks):
             for i, o in enumerate(self.source):
                 if self.total is not None and i >= self.total: break
                 yield o
-                self.update()
+                self.update(item=o)
             if self.total is None:
                 self.total = self.idx
                 self.update(self.total)
