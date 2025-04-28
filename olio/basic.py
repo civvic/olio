@@ -6,15 +6,23 @@
 from __future__ import annotations
 
 # %% auto 0
-__all__ = ['EmptyT', 'AD', 'is_listy', 'is_listy_type', 'flatten', 'shorten', 'pops_', 'pops_values_', 'gets', 'update_']
+__all__ = ['empty', 'AD', 'is_listy', 'is_listy_type', 'flatten', 'shorten', 'shortens', 'Runner', 'setattrs', 'val_at',
+           'val_atpath', 'has_key', 'has_path', 'vals_atpath', 'vals_at', 'pops_', 'pops_values_', 'gets', 'update_']
 
 # %% ../nbs/00_basic.ipynb
+import operator
 import pprint
+import re
 from inspect import Parameter
+from typing import Any
+from typing import Callable
 from typing import Hashable
 from typing import Iterable
+from typing import Literal
 from typing import Mapping
+from typing import MutableMapping
 from typing import Self
+from typing import Sequence
 from typing import Type
 from typing import TypeAlias
 from typing import TypeVar
@@ -23,8 +31,15 @@ import fastcore.all as FC
 
 
 # %% ../nbs/00_basic.ipynb
-_EMPTY: TypeAlias = Parameter.empty
-EmptyT = Type[_EMPTY]
+class Empty(type): __repr__ = __str__ = lambda self: 'empty'
+class EmptyT(metaclass=Empty):...
+
+# _EMPTY: TypeAlias = Parameter.empty
+# EmptyT = Type[_EMPTY]
+
+
+# %% ../nbs/00_basic.ipynb
+empty = EmptyT
 
 
 # %% ../nbs/00_basic.ipynb
@@ -57,18 +72,9 @@ def flatten(o):
 
 
 # %% ../nbs/00_basic.ipynb
-def shorten(x, mode='l', limit=40, trunc='…', empty='') -> str:
+def shorten(x, mode:Literal['l', 'r', 'c']='l', limit=40, trunc='…', empty='') -> str:
     s = str(x)
     if len(s) > limit:
-        # s = f'{s[:limit//2]} ... {s[:-limit//2]}'
-        # s = s[:limit] + '..' * (len(s) > limit)
-        # s = (
-        #         f'...{s[sl1:sl2]}'
-        #         if mode == 'l' else 
-        #         f's[sl1:sl2]...'
-        #     )
-        # sl1, sl2, l, r = (-limit, None, trunc, empty) if mode == 'l' else (None, limit, empty, trunc)
-        # s = f'{l}{s[sl1:sl2]}{r}'
         l, m, r = (
             (empty, trunc, s[-limit:]) if mode == 'l' else 
             (s[:limit], trunc, empty) if mode == 'r' else 
@@ -76,6 +82,100 @@ def shorten(x, mode='l', limit=40, trunc='…', empty='') -> str:
         )
         s = f'{l}{m}{r}'
     return s
+
+def shortens(x, mode:Literal['l', 'r', 'c']='l', limit=40, trunc='…', empty='') -> list[str]:
+    return [shorten(_, mode, limit, trunc, empty) for _ in FC.listify(x)]
+
+
+# %% ../nbs/00_basic.ipynb
+_FuncItem: TypeAlias = Callable | Sequence['_FuncItem']
+
+def Runner(*fns: _FuncItem) -> Callable:
+    """Return a function that runs callables `fns` in sequence with same arguments. 
+    Only side-effects, no composition."""
+    _fns: tuple[Callable, ...] = tuple(FC.flatten(fns))  # type: ignore
+    if not _fns: return FC.noop
+    if len(_fns) == 1: return _fns[0]
+    def _(*args, **kwargs) -> None:
+        for f in _fns: f(*args, **kwargs)
+    return _
+
+
+# %% ../nbs/00_basic.ipynb
+def setattrs(dest, src, flds=''):
+    "Set `flds` or keys() or dir() attributes from `src` into `dest`"
+    g = dict.get if isinstance(src, dict) else getattr
+    s = operator.setitem if isinstance(dest, MutableMapping) else setattr
+    if flds: flds = re.split(r",\s*", flds)
+    elif isinstance(src, dict): flds = src.keys()
+    else: flds = (_ for _ in dir(src) if _[0] != '_')
+    for fld in flds: s(dest, fld, g(src, fld))
+
+
+# %% ../nbs/00_basic.ipynb
+def val_at(o, attr: str, default: Any=empty, sep='.'):
+    "Traverse nested `o` looking for attributes/items specified in dot-separated `attr`."
+    if not isinstance(attr, str): raise TypeError(f'{attr=!r} is not a string')
+    try:
+        for a in attr.split(sep):
+            try: o = o[a]
+            except (TypeError, KeyError):
+                try: o = o[int(a)]
+                except (IndexError, TypeError, KeyError, ValueError): o = getattr(o, a)
+    except AttributeError as e:
+        return default if default is not empty else FC.stop(e)  # type: ignore
+    return o
+
+def val_atpath(o, *path: Any,  default: Any=empty):
+    "Traverse nested `o` looking for attributes/items specified in `path`."
+    try:
+        for a in path:
+            try: o = o[a]
+            except (IndexError, TypeError, KeyError):
+                try: o = o[int(a)]
+                except (IndexError, TypeError, KeyError, ValueError): o = getattr(o, str(a))
+    except (AttributeError, TypeError) as e:
+        return default if default is not empty else FC.stop(e)  # type: ignore
+    return o
+
+_NF = object()
+
+def has_key(o, attr: str, sep='.') -> bool:
+    "Return `True` if nested dot-separated `attr` exists."
+    return val_at(o, attr, default=_NF, sep=sep) is not _NF
+
+def has_path(o, *path: Any) -> bool:
+    "Return `True` if nested `path` exists."
+    return val_atpath(o, path, default=_NF) is not _NF
+
+
+# %% ../nbs/00_basic.ipynb
+def vals_atpath(o, *path: Any) -> empty | tuple[empty | object, ...] | object:
+    "Return nested values-- or empty|(empty, ...)-- at `path` with wildcards '*' from `d`."
+    try: 
+        idx = path.index('*'); pre, pos = path[:idx], path[idx+1:]
+    except ValueError:
+        return a if (a := val_atpath(o, *path, default=_NF)) is not _NF else empty
+    a = val_atpath(o, *pre, default=_NF) if pre else o
+    if not pos: return a
+    if a is _NF: return empty
+    try: 
+        res = tuple(map(lambda x: empty if (res := vals_atpath(x, *pos)) is _NF else res, a))  # type: ignore
+        return empty if all(x is empty for x in res) else res
+    except (AttributeError, TypeError) as e: return empty
+
+def vals_at(o, path:str) -> empty | tuple[empty | object, ...] | object:
+    "Return nested values-- or empty|(empty, ...)-- at `path` with wildcards '*' from `o`."
+    pre, wc, pos = str(path).partition('*')
+    if not wc and not pos:  return a if (a := val_at(o, pre, _NF)) is not _NF else empty
+    a = val_at(o, pre.rstrip('.'), _NF) if pre else o
+    if not pos: return a
+    if a is _NF: return empty
+    try: 
+        res = tuple(map(lambda x: empty if (res := vals_at(x, pos.lstrip('.'))) is _NF else res, a))  # type: ignore
+        return empty if all(x is empty for x in res) else res
+    except TypeError: return empty
+    # return vals_atpath(o, *path.split('.')) if isinstance(path, str) else empty
 
 
 # %% ../nbs/00_basic.ipynb
@@ -97,10 +197,10 @@ def gets(d: Mapping, *ks: Hashable):
 
 
 # %% ../nbs/00_basic.ipynb
-def update_(d:dict|None=None, /, empty_value=None, **kwargs):
-    "Update `d` in-place with `kwargs` whose values aren't `empty_value`"
-    d = d if d is not None else {}
-    for k, v in kwargs.items():
-        if v is not empty_value: d[k] = v
-    return d
+def update_(dest=None, /, empty_value=None, **kwargs) -> Any:
+    "Update `dest` in-place with `kwargs` whose values aren't `empty_value`"
+    dest = dest if dest is not None else {}
+    f = operator.setitem if isinstance(dest, MutableMapping) else setattr
+    for k, v in filter(lambda x: x[1]!=empty_value, kwargs.items()): f(dest, k, v)
+    return dest
 
