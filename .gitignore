@@ -152,6 +152,8 @@ checklink/cookies.txt
 _docs
 
 _testbed/**
+.specstory
+.cursorindexingignore
 nbs/olio
 .cursorrules
 _notes.md

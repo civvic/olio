@@ -6,39 +6,60 @@
 from __future__ import annotations
 
 # %% auto 0
-__all__ = ['NoTotalT', 'Callback', 'run_cbs', 'PassCB', 'HasCallbacks', 'with_cbs', 'CollectionTracker']
+__all__ = ['Callback', 'run_cbs', 'EchoCB', 'FuncCB', 'PassCB', 'HasCallbacks', 'with_cbs', 'CollBack', 'trackback', 'process_']
 
 # %% ../nbs/10_callback.ipynb
+import collections
 import time
 from contextlib import contextmanager
 from functools import partial
 from operator import attrgetter
+from operator import length_hint
 from typing import Any
+from typing import Callable
 from typing import Iterable
+from typing import Iterator
 from typing import Sequence
 from typing import Type
-from typing import TypeAlias
+from typing import TypeVar
 
 import fastcore.all as FC
 
 
 # %% ../nbs/10_callback.ipynb
-from .basic import _EMPTY
 from .basic import AD
+from .basic import empty
+from .basic import EmptyT
+from .basic import update_
+from .common import Runner
+from .common import setattrs
 
 
 # %% ../nbs/10_callback.ipynb
-class Callback(): 
+class Callback: 
     order = 0
-    cbs: list[Callback]  # if present, run callbacks in the list after running this callback
+    cbs: Sequence[Callback]  # if present, run callbacks in the list after running this callback
+    
+
+# %% ../nbs/10_callback.ipynb
+def run_cbs(cbs: Iterable[Callback] | FC.L, method_nm:str, ctx=None, *args, **kwargs):
+    "Run `method_nm(ctx, ...)` of each callback in `cbs` in order."
+    for cb in sorted(cbs, key=attrgetter('order')):
+        if f := getattr(cb, method_nm, None): Runner(f)(ctx, *args, **kwargs)
+        if nested := getattr(cb, 'cbs', None): 
+            run_cbs(filter(lambda x: x != cb, nested), method_nm, ctx, *args, **kwargs)
 
 
 # %% ../nbs/10_callback.ipynb
-def run_cbs(cbs: Sequence[Callback] | FC.L, method_nm:str, caller=None, *args, **kwargs):
-    "Run `method_nm(caller)` of each callback in `cbs` in order."
-    for cb in sorted(cbs, key=attrgetter('order')):
-        if method := getattr(cb, method_nm, None): method(caller, *args, **kwargs)
-        if nested := getattr(cb, 'cbs', None): run_cbs(nested, method_nm, caller, *args, **kwargs)
+class EchoCB(Callback):
+    cbs=()
+    def echo(self, ctx, *args, **kwargs): print(ctx, args, kwargs)
+    def __getattr__(self, name): return partial(self.echo, name)
+
+
+# %% ../nbs/10_callback.ipynb
+class FuncCB(Callback):
+    def __init__(self, **kwargs): setattrs(self, kwargs)
 
 
 # %% ../nbs/10_callback.ipynb
@@ -97,77 +118,99 @@ class with_cbs:
         return _f
 
 # %% ../nbs/10_callback.ipynb
-NoTotalT: TypeAlias = None
+def _get_total(total: int|None|Type[EmptyT], source) -> int|None:
+    if total is empty:
+        try: return len(source)
+        except: return length_hint(source) or None
+    if total is not None and (not isinstance(total, int) or total < 0): total = None
+    return total
+
 
 # %% ../nbs/10_callback.ipynb
-class CollectionTracker(HasCallbacks):
-    "Base for tracking iteration state over a collection, extensible via subclassing."
-    idx: int|None = None
-    start_time: float|None = None
+class CollBack(HasCallbacks):
+    "Track iterables and extend them with callbacks."
+
+    cbs_names = ('before_iter', 'after_iter', 'on_iter', 'on_interrupt')
+
+    n: int|None = None
     elapsed_time: float|None = None
-
-    cbs_names = ('on_start', 'on_stop', 'before_iter', 'after_iter', 'on_update', 'on_interrupt')
-
-    @property
-    def state(self):
-        st = AD(idx=self.idx, total=self.total, 
-            progress=self.progress, elapsed_time=self.elapsed_time)
-        if self.interrupted: st.interrupted = True
-        return st
+    active, interrupted = False, False
+    item: Any = empty
+    def __init__(self, 
+            source: Iterable[Any] = (), 
+            total: int|None|Type[EmptyT] = empty, 
+            context: Any = empty,
+            **kwargs):
+        self._source, self._total = source, total
+        self.total: int|None = _get_total(self._total, self._source)
+        self.context = context
+        super().__init__(**kwargs)
 
     @property
     def progress(self):
-        if self.total is not None and self.idx is not None and self.total:
-            return min(1.0, round((self.idx+1) / float(self.total), 4))
+        if self.total:
+            return None if self.n is None else min(1., round((self.n+1)/float(self.total), 4))
         return None
 
-    def update(self, idx:int|None=None, item:Any=_EMPTY):
-        if self.idx is None: self.idx = self._start(idx or 0)
-        if not self.active or (self.total is not None and self.idx >= self.total): return
-        self.elapsed_time = time.time() - self.start_time  # type: ignore
-        self.on_update(item) if item is not _EMPTY else self.on_update()
-        if idx is None: idx = self.idx + 1
-        if self.total is not None and idx >= self.total:
-            self.after_iter()
-            self._stop()
-        self.idx = idx
-    
-    def _start(self, idx:int):
-        self.active = True
-        self.start_time = time.time()
-        self.on_start()
-        self.before_iter()
-        self.idx = idx
-        return idx
+    @property
+    def state(self):
+        return AD(update_(item=self.item, n=self.n, total=self.total, progress=self.progress, 
+            context=self.context, 
+            elapsed_time=self.elapsed_time, interrupted=self.interrupted or empty, empty_value=empty))
+
+    def __repr__(self): return f'{self.__class__.__name__}#{self._source}, total={self._total}'
+
+    def _start(self):
+        self.total = _get_total(self._total, self._source)
+        self.active, self.elapsed_time, self.n = True, None, None
+        run_cbs(self.cbs, 'before_iter', self.state)
 
     def _stop(self):
-        if self.active:
-            self.active = False
-            self.on_stop()
+        if self.total is None and self.n is not None: self.total = self.n + 1
+        self.active, self.item = False, empty
+        run_cbs(self.cbs, 'after_iter', self.state)
+    
+    def _interrupt(self): self.interrupted = True; run_cbs(self.cbs, 'on_interrupt', self.state)
 
-    def __iter__(self):
-        # if self.total != 0: self._setup(0)
-        self._start(0)
+    def __iter__(self) -> Iterator[Any]:
+        if self._source is None: return
         try:
-            for i, o in enumerate(self.source):
-                if self.total is not None and i >= self.total: break
-                yield o
-                self.update(item=o)
-            if self.total is None:
-                self.total = self.idx
-                self.update(self.total)
-        except Exception as e:
-            self.interrupted = True
-            self.on_interrupt()
-            raise e
-        finally: self._stop()
+            start_time = time.time()
+            self._start()
+            for self.n, self.item in enumerate(self._source):
+                if self.total is not None and self.n >= self.total: break
+                yield self.item
+                self.elapsed_time = time.time() - start_time
+                run_cbs(self.cbs, 'on_iter', self.state, self.item)
+                if self.total is not None and self.n >= self.total-1: break
+        except Exception as e: self._interrupt(); raise e
+        finally:
+            self._stop()
 
-    def __init__(self, source:Iterable[Any], total:int|NoTotalT|Type[_EMPTY]=_EMPTY, **kwargs):
-        super().__init__(**kwargs)
-        self.source = source
-        if total is _EMPTY: 
-            try: total = len(source)  # type: ignore
-            except: total = None
-        self.total: int|None = total  # type: ignore
-        self.interrupted = False
-        self.active = False
+    def trackback(self, cbs:Sequence[Callback]=()) -> Iterator[tuple[AD[Any], Any]]:
+        with self.this_cbs(cbs):
+            for elem in self:
+                yield self.state, elem
+
+def trackback(source: Iterable[Any], total: int|None|Type[EmptyT]=empty, context: Any=empty, 
+        cbs:Sequence[Callback]=()) -> Iterator[tuple[AD[Any], Any]]:
+    return CollBack(source, total, context, cbs=cbs).trackback()
+
+
+# %% ../nbs/10_callback.ipynb
+_T = TypeVar('_T')
+
+def process_(
+        iterable:Iterable[_T], /, 
+        cbs: Callback|Sequence[Callback]=(), 
+        slc:slice|None=None, 
+        pred:Callable[[_T], bool]|None=None, 
+        context:Any=empty,
+        **kwargs  # FuncCB kwargs
+    ) -> tuple[Callback,...]:
+    "Process a subset `slc` of `iterable` filtered by `pred` with callbacks from `cbs` and `FuncCB` `kwargs`"
+    _cbs = FC.tuplify(cbs) + ((FuncCB(**kwargs),) if kwargs else ())
+    items = FC.L(iterable)[slc or slice(None)].filter(pred)  # type: ignore
+    collections.deque(CollBack(items, context=context,cbs=_cbs), maxlen=0)
+    return _cbs  # type: ignore
+
