@@ -7,13 +7,18 @@ from __future__ import annotations
 
 # %% auto 0
 __all__ = ['empty', 'AD', 'is_listy', 'is_listy_type', 'flatten', 'shorten', 'shortens', 'Runner', 'setattrs', 'val_at',
-           'val_atpath', 'has_key', 'has_path', 'vals_atpath', 'vals_at', 'pops_', 'pops_values_', 'gets', 'update_']
+           'val_atpath', 'has_key', 'has_path', 'vals_atpath', 'vals_at', 'pops_', 'pops_values_', 'gets', 'update_',
+           'bundle_path']
 
 # %% ../nbs/00_basic.ipynb
+import importlib
 import operator
 import pprint
 import re
+import sys
 from inspect import Parameter
+from pathlib import Path
+from types import ModuleType
 from typing import Any
 from typing import Callable
 from typing import Hashable
@@ -37,10 +42,8 @@ class EmptyT(metaclass=Empty):...
 # _EMPTY: TypeAlias = Parameter.empty
 # EmptyT = Type[_EMPTY]
 
-
 # %% ../nbs/00_basic.ipynb
 empty = EmptyT
-
 
 # %% ../nbs/00_basic.ipynb
 _VT = TypeVar('_VT')
@@ -53,14 +56,12 @@ class AD(dict[str, _VT]):
     def _repr_markdown_(self): return f'```json\n{pprint.pformat(self, indent=2)}\n```'
     def copy(self) -> Self: return type(self)(**self)
 
-
 # %% ../nbs/00_basic.ipynb
 def is_listy(x):
     return isinstance(x, Iterable) and not isinstance(x, (bytes, str))
 
 def is_listy_type(x):
     return issubclass(x, Iterable) and not issubclass(x, (bytes, str))
-
 
 # %% ../nbs/00_basic.ipynb
 def flatten(o):
@@ -69,7 +70,6 @@ def flatten(o):
         if not is_listy(item): yield item; continue
         try: yield from flatten(item)
         except TypeError: yield item
-
 
 # %% ../nbs/00_basic.ipynb
 def shorten(x, mode:Literal['l', 'r', 'c']='l', limit=40, trunc='…', empty='') -> str:
@@ -86,7 +86,6 @@ def shorten(x, mode:Literal['l', 'r', 'c']='l', limit=40, trunc='…', empty='')
 def shortens(x, mode:Literal['l', 'r', 'c']='l', limit=40, trunc='…', empty='') -> list[str]:
     return [shorten(_, mode, limit, trunc, empty) for _ in FC.listify(x)]
 
-
 # %% ../nbs/00_basic.ipynb
 _FuncItem: TypeAlias = Callable | Sequence['_FuncItem']
 
@@ -100,7 +99,6 @@ def Runner(*fns: _FuncItem) -> Callable:
         for f in _fns: f(*args, **kwargs)
     return _
 
-
 # %% ../nbs/00_basic.ipynb
 def setattrs(dest, src, flds=''):
     "Set `flds` or keys() or dir() attributes from `src` into `dest`"
@@ -110,7 +108,6 @@ def setattrs(dest, src, flds=''):
     elif isinstance(src, dict): flds = src.keys()
     else: flds = (_ for _ in dir(src) if _[0] != '_')
     for fld in flds: s(dest, fld, g(src, fld))
-
 
 # %% ../nbs/00_basic.ipynb
 def val_at(o, attr: str, default: Any=empty, sep='.'):
@@ -148,7 +145,6 @@ def has_path(o, *path: Any) -> bool:
     "Return `True` if nested `path` exists."
     return val_atpath(o, path, default=_NF) is not _NF
 
-
 # %% ../nbs/00_basic.ipynb
 def vals_atpath(o, *path: Any) -> empty | tuple[empty | object, ...] | object:
     "Return nested values-- or empty|(empty, ...)-- at `path` with wildcards '*' from `d`."
@@ -177,24 +173,20 @@ def vals_at(o, path:str) -> empty | tuple[empty | object, ...] | object:
     except TypeError: return empty
     # return vals_atpath(o, *path.split('.')) if isinstance(path, str) else empty
 
-
 # %% ../nbs/00_basic.ipynb
 def pops_(d: dict, *ks: Hashable) -> dict:
     "Pop existing `ks` items from `d` in-place into a dictionary."
     return {k:d.pop(k) for k in ks if k in d}
-
 
 # %% ../nbs/00_basic.ipynb
 def pops_values_(d: dict, *ks: Hashable) -> tuple:
     "Pop existing `ks` items from `d` in-place into a tuple of values or `Parameter.empty` for missing keys."
     return tuple(d.pop(k, Parameter.empty) for k in ks)
 
-
 # %% ../nbs/00_basic.ipynb
 def gets(d: Mapping, *ks: Hashable):
     "Fetches `ks` values, or `Parameter.empty` for missing keys, from `d` into a tuple."
     return tuple(d.get(k, Parameter.empty) for k in ks)  # type: ignore
-
 
 # %% ../nbs/00_basic.ipynb
 def update_(dest=None, /, empty_value=None, **kwargs) -> Any:
@@ -204,3 +196,16 @@ def update_(dest=None, /, empty_value=None, **kwargs) -> Any:
     for k, v in filter(lambda x: x[1]!=empty_value, kwargs.items()): f(dest, k, v)
     return dest
 
+# %% ../nbs/00_basic.ipynb
+def _get_globals(mod: str):
+    if hasattr(sys, '_getframe'):
+        glb = sys._getframe(2).f_globals
+    else:
+        glb = sys.modules[mod].__dict__
+    return glb
+
+# %% ../nbs/00_basic.ipynb
+def bundle_path(mod:str|ModuleType):
+    "Return the path to the module's directory or current directory."
+    if isinstance(mod, str): mod = importlib.import_module(mod)
+    return Path(fn).parent if (fn := getattr(mod, '__file__', None)) else Path()
