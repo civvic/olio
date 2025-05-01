@@ -5,7 +5,7 @@ from __future__ import annotations
 
 
 # %% auto 0
-__all__ = ['cleanupwidgets', 'wait_for_change', 'yield_for_change']
+__all__ = ['cleanupwidgets', 'Clickable', 'wait_for_change', 'yield_for_change']
 
 # %% ../nbs/20_widgets.ipynb
 import asyncio
@@ -13,6 +13,7 @@ import time
 from functools import wraps
 
 import ipywidgets as W
+import traitlets as T
 
 
 # %% ../nbs/20_widgets.ipynb
@@ -29,6 +30,15 @@ def cleanupwidgets(*ws, mod: str|None=None, clear=True):
             try: _w.close()  # type: ignore
             except: pass
     if clear: clear_output(wait=False)
+
+# %% ../nbs/20_widgets.ipynb
+class Clickable(W.Button):
+    clicked = T.Int(0)
+    def __init__(self, description='', **kwargs):
+        super().__init__(description=description, **kwargs)
+        self.on_click(lambda b: b.set_trait('clicked', b.clicked + 1))
+        if not description:
+            T.dlink((self, 'clicked'), (self, 'description'), lambda x: f'{x}')
 
 # %% ../nbs/20_widgets.ipynb
 def wait_for_change(widget:W.Widget, value:str):
