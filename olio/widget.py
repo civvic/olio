@@ -32,13 +32,13 @@ def cleanupwidgets(*ws, mod: str|None=None, clear=True):
     if clear: clear_output(wait=False)
 
 # %% ../nbs/20_widgets.ipynb
-class Clickable(W.Button):
-    clicked = T.Int(0)
+class Clickable(W.Button, W.ValueWidget):
+    value = T.Int(0)
     def __init__(self, description='', **kwargs):
         super().__init__(description=description, **kwargs)
-        self.on_click(lambda b: b.set_trait('clicked', b.clicked + 1))
+        self.on_click(lambda b: b.set_trait('value', b.value + 1))
         if not description:
-            T.dlink((self, 'clicked'), (self, 'description'), lambda x: f'{x}')
+            T.dlink((self, 'value'), (self, 'description'), lambda x: f'{x}')
 
 # %% ../nbs/20_widgets.ipynb
 def wait_for_change(widget:W.Widget, value:str):
