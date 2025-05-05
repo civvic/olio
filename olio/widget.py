@@ -5,7 +5,7 @@ from __future__ import annotations
 
 
 # %% auto 0
-__all__ = ['cleanupwidgets', 'Clickable', 'wait_for_change', 'yield_for_change']
+__all__ = ['cleanupwidgets', 'Clickable', 'wait_for_change', 'yield_for_change', 'get_user_input']
 
 # %% ../nbs/20_widgets.ipynb
 import asyncio
@@ -14,6 +14,9 @@ from functools import wraps
 
 import ipywidgets as W
 import traitlets as T
+from IPython.display import display
+from IPython.display import Markdown
+from jupyter_ui_poll import ui_events
 
 
 # %% ../nbs/20_widgets.ipynb
@@ -69,3 +72,26 @@ def yield_for_change(widget, attribute):
             next(i)
         return inner
     return f
+
+# %% ../nbs/20_widgets.ipynb
+def get_user_input(
+        prompt='', placeholder='Write something. Enter to submit', timeout=10., widget=None, value=None):
+    if widget is None:
+        layout = {'description_width':'auto', 'width':'80%'}
+        b = W.HBox([
+            W.HTML(f"<b>{prompt}</b>" if prompt else ''),
+            w := W.Text(value=value,placeholder=placeholder, continuous_update=False, layout=layout)
+        ])
+        dh = display(b, display_id=True); time.sleep(0.05)
+    else: w, dh = widget, None
+    w.focus()
+    answer = v = w.value
+    start_time = time.time()
+    with ui_events() as ui_poll:
+        while answer == v:
+            if (time.time() - start_time) > timeout: break
+            ui_poll(10)
+            time.sleep(0.1)  # Simulate async processing
+            answer = w.value
+    if dh: b.close(); dh.update(Markdown(f"**{prompt}** {answer}" if prompt else answer))
+    return answer.lower()

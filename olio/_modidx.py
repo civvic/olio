@@ -86,5 +86,6 @@ d = { 'settings': { 'branch': 'main',
             'olio.widget': { 'olio.widget.Clickable': ('widgets.html#clickable', 'olio/widget.py'),
                              'olio.widget.Clickable.__init__': ('widgets.html#clickable.__init__', 'olio/widget.py'),
                              'olio.widget.cleanupwidgets': ('widgets.html#cleanupwidgets', 'olio/widget.py'),
+                             'olio.widget.get_user_input': ('widgets.html#get_user_input', 'olio/widget.py'),
                              'olio.widget.wait_for_change': ('widgets.html#wait_for_change', 'olio/widget.py'),
                              'olio.widget.yield_for_change': ('widgets.html#yield_for_change', 'olio/widget.py')}}}
