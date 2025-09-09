@@ -45,6 +45,8 @@ class EmptyT(metaclass=Empty):...
 # %% ../nbs/00_basic.ipynb
 empty = EmptyT
 
+def is_empty(x) -> bool: return x is empty
+
 # %% ../nbs/00_basic.ipynb
 _VT = TypeVar('_VT')
 # from `fastcore` + generics
