@@ -31,7 +31,7 @@ def cleanupwidgets(*ws, mod: str|None=None, clear=True):
         _w = glb.get(w) if isinstance(w, str) else w
         if _w:
             try: _w.close()  # type: ignore
-            except: pass
+            except Exception as e: pass
     if clear: clear_output(wait=False)
 
 # %% ../nbs/20_widgets.ipynb
