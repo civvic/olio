@@ -6,21 +6,24 @@
 from __future__ import annotations
 
 # %% auto 0
-__all__ = ['empty', 'AD', 'is_listy', 'is_listy_type', 'flatten', 'shorten', 'shortens', 'Runner', 'setattrs', 'val_at',
-           'val_atpath', 'has_key', 'has_path', 'vals_atpath', 'vals_at', 'pops_', 'pops_values_', 'gets', 'update_',
-           'bundle_path']
+__all__ = ['empty', 'is_empty', 'AD', 'is_listy', 'is_listy_type', 'flatten', 'shorten', 'shortens', 'Runner', 'setattrs',
+           'val_at', 'val_atpath', 'has_key', 'has_path', 'vals_atpath', 'vals_at', 'deep_in', 'pops_', 'pops_values_',
+           'gets', 'update_', 'bundle_path', 'Kounter', 'simple_id', 'id_gen', 'WithCounterMeta']
 
 # %% ../nbs/00_basic.ipynb
 import importlib
 import operator
+import os
 import pprint
 import re
 import sys
+from binascii import hexlify
 from inspect import Parameter
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 from typing import Callable
+from typing import DefaultDict
 from typing import Hashable
 from typing import Iterable
 from typing import Literal
@@ -74,9 +77,8 @@ def flatten(o):
         except TypeError: yield item
 
 # %% ../nbs/00_basic.ipynb
-def shorten(x, mode:Literal['l', 'r', 'c']='l', limit=40, trunc='…', empty='') -> str:
-    s = str(x)
-    if len(s) > limit:
+def shorten(x:Any, mode:Literal['l', 'r', 'c']='l', limit=40, trunc='…', empty='') -> str:
+    if len(s := str(x)) > limit:
         l, m, r = (
             (empty, trunc, s[-limit:]) if mode == 'l' else 
             (s[:limit], trunc, empty) if mode == 'r' else 
@@ -85,8 +87,9 @@ def shorten(x, mode:Literal['l', 'r', 'c']='l', limit=40, trunc='…', empty='')
         s = f'{l}{m}{r}'
     return s
 
-def shortens(x, mode:Literal['l', 'r', 'c']='l', limit=40, trunc='…', empty='') -> list[str]:
-    return [shorten(_, mode, limit, trunc, empty) for _ in FC.listify(x)]
+def shortens(xs:Iterable[Any], mode:Literal['l', 'r', 'c']='l', limit=40, trunc='…', empty=''):
+    for x in xs: yield shorten(x, mode, limit, trunc, empty)
+
 
 # %% ../nbs/00_basic.ipynb
 _FuncItem: TypeAlias = Callable | Sequence['_FuncItem']
@@ -148,8 +151,7 @@ def has_path(o, *path: Any) -> bool:
     return val_atpath(o, path, default=_NF) is not _NF
 
 # %% ../nbs/00_basic.ipynb
-def vals_atpath(o, *path: Any) -> empty | tuple[empty | object, ...] | object:
-    "Return nested values-- or empty|(empty, ...)-- at `path` with wildcards '*' from `d`."
+def _vals_atpath(o, *path: Any, filter_empty=False) -> empty | tuple[empty | object, ...] | object:
     try: 
         idx = path.index('*'); pre, pos = path[:idx], path[idx+1:]
     except ValueError:
@@ -158,22 +160,47 @@ def vals_atpath(o, *path: Any) -> empty | tuple[empty | object, ...] | object:
     if not pos: return a
     if a is _NF: return empty
     try: 
-        res = tuple(map(lambda x: empty if (res := vals_atpath(x, *pos)) is _NF else res, a))  # type: ignore
-        return empty if all(x is empty for x in res) else res
+        res = tuple(map(lambda x: _vals_atpath(x, *pos, filter_empty=filter_empty), a))  # type: ignore
+        if all(x is empty for x in res): return empty
+        return tuple(filter(lambda x: x is not empty, res)) if filter_empty else res
     except (AttributeError, TypeError) as e: return empty
 
-def vals_at(o, path:str) -> empty | tuple[empty | object, ...] | object:
-    "Return nested values-- or empty|(empty, ...)-- at `path` with wildcards '*' from `o`."
+def vals_atpath(o, *path: Any, filter_empty=False) -> tuple[Any, ...]:
+    "Return nested values-- or empty|(empty, ...)-- at `path` with wildcards '*' from `d`."
+    if '*' not in path: return () if (res := val_atpath(o, *path, default=_NF)) is _NF else (res,)
+    res = _vals_atpath(o, *path, filter_empty=filter_empty)
+    return () if res is empty else res  # type: ignore
+
+def _vals_at(o, path:str, filter_empty=False) -> empty | tuple[empty | object, ...] | object:
     pre, wc, pos = str(path).partition('*')
-    if not wc and not pos:  return a if (a := val_at(o, pre, _NF)) is not _NF else empty
+    if not wc and not pos: return a if (a := val_at(o, pre, _NF)) is not _NF else empty
     a = val_at(o, pre.rstrip('.'), _NF) if pre else o
     if not pos: return a
     if a is _NF: return empty
     try: 
-        res = tuple(map(lambda x: empty if (res := vals_at(x, pos.lstrip('.'))) is _NF else res, a))  # type: ignore
-        return empty if all(x is empty for x in res) else res
+        res = tuple(map(lambda x: _vals_at(x, pos.lstrip('.'), filter_empty=filter_empty), a))  # type: ignore
+        if all(x is empty for x in res): return empty
+        return tuple(filter(lambda x: x is not empty, res)) if filter_empty else res
     except TypeError: return empty
-    # return vals_atpath(o, *path.split('.')) if isinstance(path, str) else empty
+
+def vals_at(o, path:str, filter_empty=False) -> tuple[Any, ...]:
+    "Return nested values-- or empty|(empty, ...)-- at `path` with wildcards '*' from `o`."
+    if '*' not in path: return () if (res := val_at(o, path, _NF)) is _NF else (res,)
+    res = _vals_at(o, path, filter_empty=filter_empty)
+    return () if res is empty else res  # type: ignore
+
+
+# %% ../nbs/00_basic.ipynb
+def deep_in(o:Mapping|Iterable, val):
+    "return True if val is in nested collections"
+    if isinstance(o, Mapping):
+        for v in o.values():
+            if v == val or (is_listy(v) and deep_in(v, val)): return True
+        return False
+    elif isinstance(o, Iterable):
+        if val in o: return True
+        return any(deep_in(v, val) for v in o if is_listy(v))
+    raise ValueError(f"deep_in: o must be a Mapping or Iterable, got {type(o)}")
 
 # %% ../nbs/00_basic.ipynb
 def pops_(d: dict, *ks: Hashable) -> dict:
