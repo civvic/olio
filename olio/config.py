@@ -3,26 +3,33 @@
 # %% ../nbs/15_config.ipynb 1
 from __future__ import annotations
 
-
 # %% auto 0
 __all__ = ['Config']
 
 # %% ../nbs/15_config.ipynb
+import inspect
 from contextlib import contextmanager
+
+import fastcore.all as FC
 
 
 # %% ../nbs/15_config.ipynb
 class Config:
+    def __repr__(self): return str(self.as_dict())
     def update(self, **kwargs):
-        for k,v in kwargs.items(): 
-            try: setattr(self, k, v)
-            except AttributeError: pass
-    def show(self): print(vars(self))
+        ks = set(FC.flatten(map(inspect.get_annotations, type(self).mro())))
+        for k,v in kwargs.items():
+            if k in ks:
+                try: setattr(self, k, v)
+                except AttributeError: pass
+        return self
+    def as_dict(self): return {k:getattr(self, k) for k in 
+        FC.flatten(map(inspect.get_annotations, type(self).mro())) if hasattr(self, k)}
     @contextmanager
     def __call__(self, **kwargs):
-        vv = vars(self)
+        vv = vars(self).copy()
         old = {k:vv[k] for k in kwargs if k in vv}
         for k,v in kwargs.items(): setattr(self, k, v)
         yield
+        for k in [k for k in vars(self).keys() if k not in vv]: delattr(self, k)
         for k,v in old.items(): setattr(self, k, v)
-
