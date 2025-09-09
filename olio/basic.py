@@ -209,3 +209,34 @@ def bundle_path(mod:str|ModuleType):
     "Return the path to the module's directory or current directory."
     if isinstance(mod, str): mod = importlib.import_module(mod)
     return Path(fn).parent if (fn := getattr(mod, '__file__', None)) else Path()
+
+# %% ../nbs/00_basic.ipynb
+class Kounter:
+    def __init__(self): self.d = DefaultDict(int)
+    def __call__(self, k): d = self.d; d[k] += 1; return self.d[k]
+
+# %% ../nbs/00_basic.ipynb
+def simple_id():
+    return 'b'+hexlify(os.urandom(16), '-', 4).decode('ascii')
+
+def id_gen():
+    kntr = Kounter()
+    def _(o:Any=None): 
+        if o is None: return simple_id()
+        # return f"{type(o).__name__}_{hash(o) if isinstance(o, Hashable) else kntr(type(o).__name__)}"
+        return f"{type(o).__name__}_{kntr(type(o).__name__)}"
+    return _
+
+# %% ../nbs/00_basic.ipynb
+class WithCounterMeta(FC.FixSigMeta):
+    "Adds a `_cnt_` attribute to its classes and increments it for each new instance."
+    _cnt_: int
+    def __call__(cls, *args, **kwargs):
+        res = super().__call__(*args, **kwargs)
+        res._cnt_ = cls._cnt_
+        cls._cnt_ += 1
+        return res
+    def __new__(cls, name, bases, dict):
+        res = super().__new__(cls, name, bases, dict)
+        res._cnt_ = 0
+        return res
