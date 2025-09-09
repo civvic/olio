@@ -7,7 +7,7 @@ from __future__ import annotations
 
 
 # %% auto 0
-__all__ = ['pretty_repr', 'rich_display', 'RenderJSON']
+__all__ = ['selector', 'at_rule', 'ruleset', 'pretty_repr', 'rich_display', 'RenderJSON', 'cssmap', 'GlobalCSS']
 
 # %% ../nbs/17_display.ipynb
 import json
@@ -15,6 +15,7 @@ import uuid
 from typing import Mapping
 from typing import overload
 from typing import Sequence
+from typing import TypeAlias
 
 import fastcore.all as FC
 import rich
@@ -89,3 +90,69 @@ class RenderJSON(object):
 
     def _ipython_display_(self):
         self.display()
+
+# %% ../nbs/17_display.ipynb
+selector: TypeAlias = str
+at_rule: TypeAlias = str
+ruleset: TypeAlias = dict[str, str]
+
+@overload
+def cssmap(stylesheet: dict[selector, ruleset], lvl: int = 0) -> str: ...
+
+@overload
+def cssmap(stylesheet: dict[at_rule, dict[selector, ruleset]], lvl: int = 0) -> str: ...
+
+def cssmap(stylesheet, lvl: int = 0) -> str:
+    def format_ruleset(rset: ruleset) -> str: 
+        indent = '  ' * (lvl + 1)
+        return ';\n'.join(f'{indent}{k}: {v}' for k, v in rset.items())
+    
+    def format_block(sel: str, content: str) -> str: 
+        indent = '  ' * lvl
+        return f'{indent}{sel} {{\n{content}\n{indent}}}'
+    
+    css_blocks = [
+        f'{selector} {{\n{cssmap(rules, lvl+1)}\n{" "*lvl}}}' 
+        if selector.startswith('@') else 
+        format_block(selector, format_ruleset(rules))
+        for selector, rules in stylesheet.items()
+    ]
+    
+    return '\n\n'.join(css_blocks)
+
+# %% ../nbs/17_display.ipynb
+class GlobalCSS:
+    _style_tmpl = '<style id="{name}">{css}</style>'
+    def _html_widget(self, name:str, css:str): return self._style_tmpl.format(name=name, css=css)
+    def has_style(self, name:str): return name in self._name2n
+    @property
+    def css(self): return '\n'.join(self._css)
+
+    def add(self, name:str, css, update: bool=False):
+        if self.has_style(name):
+            if not update: return
+        else:
+            n = len(self._css)
+            self._name2n[name] = n
+            self._css.append('')
+        self.update(name, css)
+
+    def update(self, name:str, css):
+        css = css if isinstance(css, str) else FC.valmap(css)
+        if css and (n := self._name2n.get(name)) is not None:
+            self._css[n] = self._html_widget(name=name, css=css)
+            if self._dh:
+                self._dh.update(HTML(self.css))
+    
+    _dh: DisplayHandle
+    def display(self): 
+        if self._dh is None: self._dh = display(HTML(self.css), display_id=True)  # type: ignore
+        else: print('GlobalCSSs should be displayed only once, skipping.')
+    def _ipython_display_(self): self.display()
+
+    def __init__(self, css:dict[str, str] | None = None):
+        self._ui_done = False
+        self._dh = None  # type: ignore
+        css = css or {}
+        self._name2n = {name: n for n,name in enumerate(css.keys())}
+        self._css = [self._html_widget(name, css) for name,css in css.items()]
