@@ -24,18 +24,21 @@ from .basic import _get_globals
 
 
 # %% ../nbs/20_widgets.ipynb
-def close_widget(w: W.Widget):
+def close_widget(w: W.Widget, all: bool=True):
+    if all:
+        for k in w.keys:  # type: ignore
+            if isinstance((v := getattr(w, k)), W.Widget):
+                close_widget(v)
     w.close()
-    if l := getattr(w, 'layout', None): l.close()
 
 # %% ../nbs/20_widgets.ipynb
-def cleanupwidgets(*ws, mod: str|None=None, clear=True):
+def cleanupwidgets(*ws, mod: str|None=None, clear=True, all=True):
     from IPython.display import clear_output
     glb = _get_globals(mod or __name__)
     for w in ws:
         _w = glb.get(w) if isinstance(w, str) else w
         if _w:
-            try: close_widget(_w)
+            try: close_widget(_w, all=all)
             except Exception as e: pass
     if clear: clear_output(wait=False)
 
