@@ -5,7 +5,7 @@ from __future__ import annotations
 
 
 # %% auto 0
-__all__ = ['cleanupwidgets', 'Clickable', 'wait_for_change', 'yield_for_change', 'get_user_input']
+__all__ = ['close_widget', 'cleanupwidgets', 'Clickable', 'wait_for_change', 'yield_for_change', 'get_user_input']
 
 # %% ../nbs/20_widgets.ipynb
 import asyncio
@@ -24,13 +24,18 @@ from .basic import _get_globals
 
 
 # %% ../nbs/20_widgets.ipynb
+def close_widget(w: W.Widget):
+    w.close()
+    if l := getattr(w, 'layout', None): l.close()
+
+# %% ../nbs/20_widgets.ipynb
 def cleanupwidgets(*ws, mod: str|None=None, clear=True):
     from IPython.display import clear_output
     glb = _get_globals(mod or __name__)
     for w in ws:
         _w = glb.get(w) if isinstance(w, str) else w
         if _w:
-            try: _w.close()  # type: ignore
+            try: close_widget(_w)
             except Exception as e: pass
     if clear: clear_output(wait=False)
 
